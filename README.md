@@ -26,6 +26,12 @@ This is a bootstrap script I use when working on projects with multiple services
 
 * Place the docker-compose files in the `available_services` directory with separate directory for each service
 * Run the script (`./init.sh`)
+* Run the generated *docker-compose* file as you would normally do with the original docker-compose command (`./docker-compose` instead of `docker-compose`)
+    eg.
+
+    ```bash
+    ./docker-compose up -d ## instead of docker-compose up -d
+    ```
 
 ## Adding new service
 
