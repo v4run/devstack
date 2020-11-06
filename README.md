@@ -19,6 +19,7 @@ This is a bootstrap script I use when working on projects with multiple services
 │       ├── ...
 │       ├── <service specific file_n>
 │       └── docker-compose.yml
+└── init.sh
 ```
 
 ## How to run
