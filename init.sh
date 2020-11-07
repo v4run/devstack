@@ -69,7 +69,7 @@ function clean_directories() {
 # the following replacements are done for the enabled services
 #   ${SERVICE_NAME}         -> The name of the service
 #   ${PROJECT_DIR}          -> The path to the source code of the service
-#   ${ENABLED_SERVICES_DIR} -> The path to the enabled services directory of the service
+#   ${SERVICE_DIR}          -> The path to the enabled services directory of the service
 function enable_service() {
     local service_name=$1
     project_path_file="$project_path_files_dir/$service_name.dir"
@@ -78,7 +78,7 @@ function enable_service() {
     directory=${directory%/}
     cp -r "$available_services_dir/$service_name" "$enabled_services_dir/$service_name"
     find "$enabled_services_dir/$service_name" -mindepth 1 -type f -print0 | xargs -0 \
-        sed -i "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$directory|g;s|\${ENABLED_SERVICES_DIR}|$enabled_services_dir/$service_name|g"
+        sed -i "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$directory|g;s|\${SERVICE_DIR}|$enabled_services_dir/$service_name|g"
     echo "$directory" >"$project_path_file" # Write the directory to directory file
 }
 
