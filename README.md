@@ -1,32 +1,24 @@
 # devstack
 
-This is a bootstrap script I use when working on projects with multiple services. The project relies on [docker-compose](https://docs.docker.com/compose/). It basically creates a replacement docker-compose command which includes all the docker-compose files of the individual services. It also includes a provision to select a subset of available services to work with. This script expects the following directory structure.
-
-```bash
-├── available_services
-│   ├── <service_1>
-│   │   ├── <service specific file_1>
-│   │   ├── <service specific file_2>
-│   │   ├── ...
-│   │   ├── ...
-│   │   ├── <service specific file_n>
-│   │   └── docker-compose.yml
-│   ├── ...
-│   ├── ...
-│   └── <service_n>
-│       ├── <service specific file_1>
-│       ├── ...
-│       ├── ...
-│       ├── <service specific file_n>
-│       └── docker-compose.yml
-└── init.sh
-```
+This is a bootstrap script I use when working on projects with multiple services. The project relies on [docker-compose](https://docs.docker.com/compose/). It basically creates a replacement docker-compose command which includes all the docker-compose files of the individual services. It also includes a provision to select a subset of available services to work with.
 
 ## How to run
 
-* Place the docker-compose files in the `available_services` directory with separate directory for each service
-* Run the script (`./init.sh`)
-* Run the generated *docker-compose* file as you would normally do with the original docker-compose command (`./docker-compose` instead of `docker-compose`)
+* Init using the following command. This will create a directory structure and and empty docker-compose.yml file for the services.
+
+    ```bash
+    devstack init service_1 ... service_n
+    ```
+
+* Complete the generated docker-compose files
+
+* Run the following command and provide the necessary inputs. This will generate a replacement docker-compose executable file.
+
+    ```bash
+    devstack update
+    ```
+
+* Run the generated *docker-compose* file as you would normally do with the original docker-compose command
     eg.
 
     ```bash
@@ -35,10 +27,17 @@ This is a bootstrap script I use when working on projects with multiple services
 
 ## Adding new service
 
-* Add a new directory in `available_services` for the service
-* Add the docker-compose file in the directory
-* Run `./init.sh` again and select the new service
+* ```bash
+  devstack init new_service_1 ... new_service_n
+  ```
+
+* Remaining steps are same as above
 
 ## NOTES
 
-* Requires `whiptail`. Tested only in Ubuntu.
+* Requires [*whiptail*](https://linux.die.net/man/1/whiptail).
+* In osx, install [*newt*](https://formulae.brew.sh/formula/newt).
+
+    ```brew
+    brew install newt
+    ```

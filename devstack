@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+
+AVAILABLE_SERVICES=()       # array to hold list of services
+SELECTED_SERVICES=()        # array to hold list of selected services
+MENU_ITEMS=()               # holds the menu items for selecting available services
+ENABLED_SERVICES=()         # array to hold list of already enabled services
+DC_COMMAND=(docker-compose) # array for building the replacement docker-compose command
+
+# Initialises the global variables
+# GLOBALS:
+#   AVAILABLE_SERVICES_DIR
+#   ENABLED_SERVICES_DIR
+#   PROJECT_PATH_FILES_DIR
+#   SCRIPT_DIR
+function init_variables() {
+    SCRIPT_DIR="$(pwd)"                                     # the directory in which the project should be initialised
+    ENABLED_SERVICES_DIR="$SCRIPT_DIR/enabled_services"     # the directory to which output files are written
+    AVAILABLE_SERVICES_DIR="$SCRIPT_DIR/available_services" # directory of the config and docker-compose files
+    PROJECT_PATH_FILES_DIR="$SCRIPT_DIR/.project_paths"     # directory to store files containing paths to projects. This is later used to prefill the values for already added services
+}
+
+# Initialises the project by creating necessary directory structure and files
+# GLOBALS:
+#   AVAILABLE_SERVICES_DIR
+#   PROJECT_PATH_FILES_DIR
+# ARGUMENTS:
+#   $@ - List of services to initialize the projects with
+function init_projects() {
+    mkdir -p "$AVAILABLE_SERVICES_DIR" # create the available services directory if not already present
+    mkdir -p "$PROJECT_PATH_FILES_DIR" # create the projects path file directory
+    local service
+    for service in "$@"; do
+        mkdir -p "$AVAILABLE_SERVICES_DIR/$service"
+        touch "$AVAILABLE_SERVICES_DIR/$service/docker-compose.yml"
+    done
+}
+
+# Removes enabled services, project path files and the generated docker-compose files
+# GLOBALS:
+#   ENABLED_SERVICES_DIR
+#   PROJECT_PATH_FILES_DIR
+function clean_projects() {
+    rm -rf "$PROJECT_PATH_FILES_DIR" "$ENABLED_SERVICES_DIR" "$SCRIPT_DIR/docker-compose"
+}
+
+# Removes the available services in addition to files removed in clean_projects
+# GLOBALS:
+#   AVAILABLE_SERVICES_DIR
+function clean_all() {
+    clean_projects
+    rm -rf "$AVAILABLE_SERVICES_DIR"
+}
+
+# gets the full path to docker-compose file of an enabled service
+# GLOBALS:
+#   ENABLED_SERVICES_DIR
+# ARGUMENTS:
+#   $1 - Name of the service of which the compose file belongs
+# OUTPUTS:
+#   The path to the docker-compose file of the service if the service is enabled
+function enabled_service_compose_file() {
+    echo "$ENABLED_SERVICES_DIR/$1/docker-compose.yml"
+}
+
+# populates the list of available services and already enabled services if any.
+# All enabled services will have a corresponding directory in the enabled_services directory.
+# So if a directory with the name of the service having a docker-compose file exists in the
+# enabled_services directory, the service is considered as enabled.
+# GLOBALS:
+#   AVAILABLE_SERVICES
+#   AVAILABLE_SERVICES_DIR
+#   ENABLED_SERVICES
+function populate_services() {
+    local service compose_file
+    while read -r file; do
+        service="${file##*/}"                                     # trim all characters including last '/' from begining to get the directory name (used as the service name)
+        AVAILABLE_SERVICES+=("$service")                          # add the service to list of available services
+        compose_file="$(enabled_service_compose_file "$service")" # the full path to docker-compose file of the project
+        [ -f "$compose_file" ] && ENABLED_SERVICES+=("$service")  # if the compose file exists, add the service to enabled services
+    done < <(find "$AVAILABLE_SERVICES_DIR" -maxdepth 1 -mindepth 1 -type d)
+}
+
+# Checks if a service is enabled
+# GLOBALS:
+#   ENABLED_SERVICES_DIR
+# ARGUMENTS:
+#   $1 - Name of the service
+# RETURN:
+#   0 if service is enabled, otherwise 1
+function is_enabled() {
+    local service
+    for service in "${ENABLED_SERVICES[@]}"; do
+        [ "$service" == "$1" ] && return 0
+    done
+    return 1
+}
+
+# fills the SELECTED_SERVICES array with the list of selected services
+# GLOBALS:
+#   MENU_ITEMS
+#   SELECTED_SERVICES
+function select_services() {
+    local services service
+    if ! services=$({ whiptail --checklist --nocancel "Select services:" 15 40 8 "${MENU_ITEMS[@]}" >/dev/tty; } 2>&1); then
+        exit
+    fi
+    for service in $services; do
+        SELECTED_SERVICES+=("$(strip_quotes "$service")")
+    done
+}
+
+# populates the menu with the available services. if a service was previous enabled, that service will be preselected
+# GLOBALS:
+#   AVAILABLE_SERVICES
+#   MENU_ITEMS
+# RETURN:
+#   0 if service is enabled, otherwise 1
+function populate_menu() {
+    local service compose_file enabled
+    for service in "${AVAILABLE_SERVICES[@]}"; do
+        compose_file="$(enabled_service_compose_file "$service")" # the full path to docker-compose file of the project
+        if is_enabled "$service"; then
+            enabled="on"
+        else
+            enabled="off"
+        fi
+        MENU_ITEMS+=("$service" "" "$enabled")
+    done
+}
+
+# strip the surrounding double quotes
+function strip_quotes() {
+    str=${1#\"}
+    echo "${str%\"}"
+}
+
+# read input from user
+# ARGUMENTS:
+#   $1 - Message to be shown
+#   $2 - The default value to prefill and output in case of error
+# OUTPUTS:
+#   The value read from user in case of success. Otherwise the default value passed
+function read_input() {
+    local text
+    local message=$1
+    local default_value=
+    [ "$2" != "" ] && default_value="$2"
+    if text=$(whiptail --inputbox --nocancel "Absoulute path of $message" 10 60 "$default_value" 2>&1 >/dev/tty); then
+        echo "${text%/}"
+        return
+    fi
+    echo "$default_value"
+}
+
+# deletes and re-creates the enabled services directory
+# GLOBALS:
+#   ENABLED_SERVICES_DIR
+function clean_directories() {
+    rm -rf "$ENABLED_SERVICES_DIR" && mkdir -p "$ENABLED_SERVICES_DIR" # recreate the destination directory for cleaning old files
+}
+
+# gets the current project directory of the service if any
+# GLOBALS:
+#   PROJECT_PATH_FILES_DIR
+# ARGUMENTS:
+#   $1 - Name of the service
+# OUTPUTS:
+#   Directory path of project in case of success. Otherwise empty string
+function get_project_directory() {
+    local service_name project_path_file
+    service_name=$1
+    project_path_file="$PROJECT_PATH_FILES_DIR/$service_name.dir"
+    cat "$project_path_file" 2>/dev/null
+}
+
+# reads the new project directory for a service
+# ARGUMENTS:
+#   $1 - Name of the service
+# OUTPUTS:
+#   Directory path of project in case of success. Otherwise default value
+function read_project_directory() {
+    local service_name
+    service_name=$1
+    read_input "Absoulute path of $service_name" "$(get_project_directory "$service_name")"
+}
+
+# enables a service
+# copies all the files in the available services directory to enabled services for a service
+# the following replacements are done for the enabled services
+#   ${SERVICE_NAME} -> The name of the service
+#   ${PROJECT_DIR}  -> The path to the source code of the service
+#   ${SERVICE_DIR}  -> The path to the enabled services directory of the service
+#
+# GLOBALS:
+#   AVAILABLE_SERVICES_DIR
+#   ENABLED_SERVICES_DIR
+#   PROJECT_PATH_FILES_DIR
+# ARGUMENTS:
+#   $1 - Name of the service
+#   $2 - The directory path of the project
+function enable_service() {
+    local service_name project_directory
+    service_name=$1
+    project_directory=$2
+    project_path_file="$PROJECT_PATH_FILES_DIR/$service_name.dir"
+    cp -r "$AVAILABLE_SERVICES_DIR/$service_name" "$ENABLED_SERVICES_DIR/"
+    find "$ENABLED_SERVICES_DIR/$service_name" -mindepth 1 -type f -print0 | xargs -0 \
+        sed -i "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$project_directory|g;s|\${SERVICE_DIR}|$ENABLED_SERVICES_DIR/$service_name|g"
+    echo "$project_directory" >"$project_path_file" # Write the directory to directory file
+}
+
+# generates the docker-compose command to be used
+# this basically generates original docker-compose command which passes all the docker-compose.yml files of the services in addition
+# eg. docker-compose --file service1/docker-compose.yml --file service1/docker-compose.yml ....
+# GLOBALS:
+#   DC_COMMAND
+function generate_compose_file() {
+    cat >"$SCRIPT_DIR/docker-compose" <<EOF
+#!/bin/bash
+${DC_COMMAND[@]} "\$@"
+EOF
+    chmod +x docker-compose
+}
+
+# re-enables the already selected services. any changes made to the docker-compose or other files of a selected
+# service will be reflected after this function is called. so if the changes are only for the currently enabled
+# services and you don't need to enable or disable any services, this function can be called
+#
+# GLOBALS:
+#   SELECTED_SERVICES
+function reload_current_services() {
+    local service_name project_directory
+    for service_name in "${SELECTED_SERVICES[@]}"; do
+        project_directory=$(get_project_directory "$service_name")
+        enable_service "$service_name" "$project_directory"
+    done
+}
+
+# enables the selected services and builds the replacement docker-compose command
+# GLOBALS:
+#   DC_COMMAND
+#   SELECTED_SERVICES
+function enable_services() {
+    local service_name project_directory
+    for service_name in "${SELECTED_SERVICES[@]}"; do
+        project_directory=$(read_project_directory "$service_name")
+        enable_service "$service_name" "$project_directory"
+        DC_COMMAND+=(--file "$(enabled_service_compose_file "$service_name")") # Add the --file <filename>.yml for docker-compose command
+    done
+}
+
+init_variables # initialising the variables required for the script
+case "$1" in
+
+clean)
+    # Removes all the project related files except available services
+    clean_projects
+    ;;
+
+clean_all)
+    # Removes all the project related files
+    clean_all
+    ;;
+
+init)
+    # Initialises the project by creating necessary directory structure and files
+    shift
+    init_projects "$@"
+    ;;
+
+reload)
+    # Reload the files of existing services
+    populate_services # populates the available services
+    SELECTED_SERVICES=("${ENABLED_SERVICES[@]}")
+    reload_current_services
+    ;;
+
+update)
+    # Enable or disable services
+    populate_services     # populates the available services
+    populate_menu         # populates the menu with available services
+    select_services       # select the services to enable
+    clean_directories     # clean the existing files
+    enable_services       # enable the selected services
+    generate_compose_file # generate the replacement docker-compose command
+    ;;
+*)
+    echo "
+Usage: $(basename "$0") COMMAND
+
+A tool to manage multi-service applications
+
+Commands:
+    clean       Removes all the project related files except available services
+    clean_all   Removes all the project related files
+    init        Initialises the project
+    reload      Reload the files of existing services
+    update      Enable or disable services" >&2
+    exit 1
+    ;;
+esac
