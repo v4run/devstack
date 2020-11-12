@@ -205,7 +205,7 @@ function enable_service() {
     project_path_file="$PROJECT_PATH_FILES_DIR/$service_name.dir"
     cp -r "$AVAILABLE_SERVICES_DIR/$service_name" "$ENABLED_SERVICES_DIR/"
     find "$ENABLED_SERVICES_DIR/$service_name" -mindepth 1 -type f -print0 | xargs -0 \
-        sed -i "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$project_directory|g;s|\${SERVICE_DIR}|$ENABLED_SERVICES_DIR/$service_name|g"
+        sed -i='' "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$project_directory|g;s|\${SERVICE_DIR}|$ENABLED_SERVICES_DIR/$service_name|g"
     echo "$project_directory" >"$project_path_file" # Write the directory to directory file
 }
 
