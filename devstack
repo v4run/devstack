@@ -4,7 +4,7 @@ AVAILABLE_SERVICES=()       # array to hold list of services
 SELECTED_SERVICES=()        # array to hold list of selected services
 MENU_ITEMS=()               # holds the menu items for selecting available services
 ENABLED_SERVICES=()         # array to hold list of already enabled services
-DC_COMMAND=(docker-compose) # array for building the replacement docker-compose command
+DC_COMMAND=(docker-compose) # array for building the replacement docker-compose.yml file
 
 # Initialises the global variables
 # GLOBALS:
@@ -205,7 +205,7 @@ function enable_service() {
     project_path_file="$PROJECT_PATH_FILES_DIR/$service_name.dir"
     cp -r "$AVAILABLE_SERVICES_DIR/$service_name" "$ENABLED_SERVICES_DIR/"
     find "$ENABLED_SERVICES_DIR/$service_name" -mindepth 1 -type f -print0 | xargs -0 \
-        sed -i='' "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$project_directory|g;s|\${SERVICE_DIR}|$ENABLED_SERVICES_DIR/$service_name|g"
+        sed -i'' "s|\${SERVICE_NAME}|$service_name|g;s|\${PROJECT_DIR}|$project_directory|g;s|\${SERVICE_DIR}|$ENABLED_SERVICES_DIR/$service_name|g"
     echo "$project_directory" >"$project_path_file" # Write the directory to directory file
 }
 
@@ -215,11 +215,7 @@ function enable_service() {
 # GLOBALS:
 #   DC_COMMAND
 function generate_compose_file() {
-    cat >"$SCRIPT_DIR/docker-compose" <<EOF
-#!/bin/bash
-${DC_COMMAND[@]} "\$@"
-EOF
-    chmod +x docker-compose
+    "${DC_COMMAND[@]}" config >docker-compose.yml
 }
 
 # re-enables the already selected services. any changes made to the docker-compose or other files of a selected
@@ -227,16 +223,19 @@ EOF
 # services and you don't need to enable or disable any services, this function can be called
 #
 # GLOBALS:
+#   DC_COMMAND
 #   SELECTED_SERVICES
 function reload_current_services() {
     local service_name project_directory
     for service_name in "${SELECTED_SERVICES[@]}"; do
         project_directory=$(get_project_directory "$service_name")
         enable_service "$service_name" "$project_directory"
+        DC_COMMAND+=(--file "$(enabled_service_compose_file "$service_name")") # Add the --file <service_name>.yml for docker-compose command
     done
 }
 
-# enables the selected services and builds the replacement docker-compose command
+# enables the selected services and builds the combined docker-compose.yml file
+#
 # GLOBALS:
 #   DC_COMMAND
 #   SELECTED_SERVICES
@@ -245,7 +244,7 @@ function enable_services() {
     for service_name in "${SELECTED_SERVICES[@]}"; do
         project_directory=$(read_project_directory "$service_name")
         enable_service "$service_name" "$project_directory"
-        DC_COMMAND+=(--file "$(enabled_service_compose_file "$service_name")") # Add the --file <filename>.yml for docker-compose command
+        DC_COMMAND+=(--file "$(enabled_service_compose_file "$service_name")") # Add the --file <service_name>.yml for docker-compose command
     done
 }
 
@@ -273,6 +272,7 @@ reload)
     populate_services # populates the available services
     SELECTED_SERVICES=("${ENABLED_SERVICES[@]}")
     reload_current_services
+    generate_compose_file # generate the combined docker-compose.yml file
     ;;
 
 update)
@@ -282,7 +282,7 @@ update)
     select_services       # select the services to enable
     clean_directories     # clean the existing files
     enable_services       # enable the selected services
-    generate_compose_file # generate the replacement docker-compose command
+    generate_compose_file # generate the combined docker-compose.yml file
     ;;
 *)
     echo "
